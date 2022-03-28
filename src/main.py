@@ -59,52 +59,8 @@ def round_off_corners(points, angle_th):
             servive.append(point)
     return np.array(servive,dtype=np.int32)
 
-
 def shift(points, ic, ir, cell, margin):
     return np.array([[p[0]+ic*cell, p[1]+ir*cell] for p in points])
-
-def dot_write(img, ic, ir,c, cell, cell_margin, margin):
-    if c == 0:
-        return
-    cell_margin_p = cell - cell_margin
-    correct_points = np.array([(cell_margin, cell_margin), (cell_margin_p, cell_margin), (cell_margin_p, cell_margin_p), (margin, cell_margin_p)])
-    ret = create_midle_point(correct_points)
-    ret = create_midle_point(ret)
-    ret = create_midle_point(ret)
-    ret2 = np.array([ random_point(p, cell, 0.006,0.006)for p in ret ])
-
-    ret3 = shift(ret2, ic, ir, cell, margin)
-    ret4 = round_off_corners(ret3, 95)
-    cv2.fillPoly(img, [ret4], (0, 0, 0))
-
-def view(array):
-    margin = 10
-    cell = 120
-    cell_margin = 3
-    width = margin * 2 + cell * 6 #決め打ち
-    height = margin * 2 + cell * 6 #決め打ち
-    img = np.full((width, height, 3), 255, dtype=np.uint8)
-    for ir, r in enumerate(array):
-        print(r)
-        for ic, c in enumerate(r):
-            dot_write(img, ic, ir,c, cell, cell_margin, margin)
-
-    #ぼかし
-    # kernel = np.ones((5,5),np.float32)/25
-    # dst = cv2.filter2D(img,-1,kernel)
-
-    img = cv2.blur(img,(10,10))
-
-    #2値化
-    threshold = 120
-    r, img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
-
-    #ノイズ
-    noise_level=150
-    noise=np.random.randint(0,noise_level,(height,width))
-
-    cv2.imshow("ccolor",img + noise)
-    cv2.waitKey(0)
 
 def main4(opt):
     """ノイズ作成"""
@@ -194,64 +150,151 @@ def main7(opt):
 
 
 @dataclasses.dataclass
-class canpas_size():
-	w : int
-	h : int
-	d : int
+class mask_size():
+    w : int
+    h : int
+    d : int
 
-	@property
-	def shape(self):
-		return (self.w,self.h,self.d)
+    @property
+    def shape(self):
+        return (self.w,self.h,self.d)
 
 class dots_layer():
-	def __init__(self,path):
-		self.create_canpas(path)
-		self.create_dots_mask()
-		self.create_dots_noise_mask()
+    def __init__(self,path):
+        self.create_canpas(path)
+        self.create_dots_mask()
+        self.dots_noise_mask = self.create_dots_noise_mask()
+        self.dots_noise_mask2 = self.create_dots_noise_mask()
+        self.dots_noise_mask3 = self.create_dots_noise_mask()
+        self.create_dots_base()
+        # self.create_dots_noise_color()
 
-	def create_canpas(self,path):
-		self.__margin = 10
-		self.__cell = 120
-		self.__cell_margin = 2
-		
-		self.src = cv2.imread("../srcData/sample.png")
-		(src_w, src_h, src_d) = self.src.shape
-		print(f"{src_w}, {src_h}, {src_d}")
-		self.canpas_size = canpas_size(
-			w=src_w * self.__cell + self.__margin *2, h=src_h * self.__cell + self.__margin*2,d=3)
+    def create_canpas(self,path):
+        self.__margin = 10
+        self.__cell = 20
+        self.__cell_margin = 1
+        
+        self.src = cv2.imread(path)
+        (src_w, src_h, src_d) = self.src.shape
+        print(f"{src_w}, {src_h}, {src_d}")
+        self.canpas_size = mask_size(
+            w=src_w * self.__cell + self.__margin *2, h=src_h * self.__cell + self.__margin*2,d=3)
 
-	def create_dots_mask(self):
-		self.dots_mask = np.full(self.canpas_size.shape, 255, dtype=np.uint8)
-		zero = np.array([0,0,0])
-		for ir, r in enumerate(self.src):
-			for ic, c in enumerate(r):
-				c = 1 if np.all(c==zero) else 0
-				dot_write(self.dots_mask, ic, ir,c, self.__cell, self.__cell_margin, self.__margin)
+    def dot_write(self, img, ic, ir, c):
+        if c == 0:
+            return
+        cell_margin_p = self.__cell - self.__cell_margin
+        ret = np.array([(self.__cell_margin, self.__cell_margin), (cell_margin_p, self.__cell_margin), (cell_margin_p, cell_margin_p), (self.__cell_margin, cell_margin_p)])
+        ret = create_midle_point(ret)
+        ret = create_midle_point(ret)
+        ret = create_midle_point(ret)
+        ret = create_midle_point(ret)
 
-		# self.dots_mask = blend.resize(self.dots_mask, 0.08,0.08)
-		# cv2.imshow("ccolor",self.dots_mask)
-		# cv2.waitKey(0)
+        ret = np.array([ random_point(p, self.__cell, 0.002,0.002)for p in ret ])
 
-	def create_dots_noise_mask(self):
-		noise_level=150
-		noise=np.random.normal(0,20,self.canpas_size.shape)
-		noise=noise.astype(np.uint8) 
-		noise=cv2.cvtColor(noise, cv2.COLOR_BGR2GRAY)
-		noise = cv2.blur(noise,(10,10))
-		threshold = 120
-		r, self.dots_noise_mask = cv2.threshold(noise, threshold, 255, cv2.THRESH_BINARY)
+        ret = shift(ret, ic, ir, self.__cell, self.__margin)
+        ret = round_off_corners(ret, 95)
+        cv2.fillPoly(img, [ret], (0, 0, 0))
+
+    def create_dots_mask(self):
+        self.dots_mask = np.full((self.canpas_size.w, self.canpas_size.h), 255, dtype=np.uint8)
+        zero = np.array([3,3,3])
+        for ir, r in enumerate(self.src):
+            for ic, c in enumerate(r):
+                c = 1 if np.all(c<zero) else 0
+                self.dot_write(self.dots_mask, ic, ir,c )
+
+        # self.dots_mask = blend.resize(self.dots_mask, 0.08,0.08)
+        # cv2.imshow("ccolor",self.dots_mask)
+        # cv2.waitKey(0)
+
+    def create_dots_noise_mask(self):
+        noise_level=150
+        print(f"canpas {self.canpas_size.shape}")
+        noise=np.random.normal(0,20,self.canpas_size.shape)
+        print(f"noise {noise.shape}")
+        noise=noise.astype(np.uint8) 
+        noise=cv2.cvtColor(noise, cv2.COLOR_BGR2GRAY)
+        noise = cv2.blur(noise,(10,10))
+        threshold = 120
+        r, dots_noise_mask = cv2.threshold(noise, threshold, 255, cv2.THRESH_BINARY)
+        # print(f"ret {dots_noise_mask.shape}")
+        return dots_noise_mask
+
+    def create_dots_base(self):
+        self.dots_base = np.full((self.canpas_size.w, self.canpas_size.h), 255, dtype=np.uint8)
+        for ir, r in enumerate(self.src):
+            for ic, c in enumerate(r):
+                self.dot_write(self.dots_base, ic, ir, 1 )
+
+    def create_dots_noise_color(self):
+        img = blend.alfa_blend_mask(self.dots_mask, self.dots_base, 0.3)
+
+        # img = cv2.addWeighted(self.dots_noise_mask | self.dots_base, 0.4, self.dots_noise_mask2 | self.dots_base, 0.6, 0)
+        # img = cv2.addWeighted(self.dots_noise_mask3 | self.dots_base, 0.4, img, 0.6, 0)
+        return img
+
+
+
+
+class ground_layer():
+    def __init__(self, shape):
+        self.shape = shape # (w,h,d)
+        self.create_ground()
+
+    def create_ground(self):
+        (w,h,d)=self.shape
+        # self.img = np.full((w,h), 255, dtype=np.uint8)
+        noise=np.random.normal(240,10,(w,h))
+        mask = blend.line_gradation(noise, (-1, 1, -100), (0,200), 100)
+        mask = mask.astype(np.float64)
+        noise2=np.random.normal(240,10,(w,h))
+        self.img = blend.mask(noise, mask)
+        self.img = blend.alfa_blend_mask(self.img, noise2, 0.5)
+        # self.img = mask
+        # self.img = cv2.blur(self.img,(5,5))
+        # self.ground = blend.get_gradient_2d(1,100,w,h,True)
+        # self.ground2 = blend.get_gradient_3d(w, h, (0, 0, 192), (255, 255, 255), (True, False, True))
+
+
+
+
 
 class gameboy():
-	def __init__(self):
-		self.dots_layer
+    def __init__(self):
+        self.dots_layer
+
+
+def create_dots_pic(path):
+    img = np.full((15,15), 255, dtype=np.uint8)
+    img[1][0] = 0
+    img[1][3] = 0
+    img[3][4] = 0
+    cv2.imwrite(path, img)
+
+def create_circle_pic(path):
+    img = np.full((200,200,3), 255, dtype=np.uint8)
+    cv2.circle(img, (80,100), 40, (131,101,255),thickness=-1)
+    cv2.imwrite(path, img)
 
 def main8(opt):
-	# src = cv2.imread("../srcData/sample.png")
-	dots_ly = dots_layer("../srcData/sample.png")
+    # src = cv2.imread("../srcData/sample.png")
+    dots_ly = dots_layer("../srcData/testpic.jpg")
+    # ground_ly = ground_layer(dots_ly)
 
-	dots_mask = blend.resize(dots_ly.dots_mask, 0.08,0.08)
-	cv2.imshow("ccolor",dots_mask)
-	cv2.waitKey(0)
+    img = cv2.addWeighted(dots_ly.dots_noise_mask | dots_ly.dots_base, 0.05, dots_ly.dots_mask, 0.95, 0)
+    img = dots_ly.create_dots_noise_color()
+    dots_mask = blend.resize(np.uint8(img), 1.0,1.0)
+    cv2.imshow("ccolor",dots_mask)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+def main9(opt):
+    ground_ly = ground_layer((300,300,3))
+    cv2.imwrite("../srcData/noise.jpg", ground_ly.img)
+    # cv2.imshow("ccolor",ground_ly.img)
+    # cv2.waitKey(0)
+
 
 """
 TODO
@@ -308,4 +351,5 @@ if __name__== "__main__":
     parser.add_argument('--img', type=str, default=None, help='pictuer path')
     
     opt = parser.parse_args()
-    main8(opt)
+    main9(opt)
+
