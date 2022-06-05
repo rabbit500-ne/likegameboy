@@ -90,17 +90,15 @@ def circle_nomal_vec_point(cx, cy, r, x1, y1, x2, y2):
 
 
 def circle_gradation(img, center, start_renge, end_range):
-    # if len(start_color) != 3 or len(end_color) != 3:
-    #     raise Exception
     print(f"start_range: {start_renge}")
-    ret = np.full((img.shape[0], img.shape[1]), 255, dtype=np.uint8)
+    ret = np.full((img.shape[0], img.shape[1]), 0, dtype=np.uint8)
     def func(x,y):
         try:
             circle_p,_  = circle_nomal_vec_point(*center, end_range, x,y, *center)
         except ValueError:
             if (x,y) == center:
-                return 0
-            return 255
+                return 255
+            return 0
         dis_o_p = distance((x,y), circle_p)
         dis_p_c = distance((x,y), center)
         if dis_o_p < 0 or dis_p_c < 0:
@@ -108,13 +106,13 @@ def circle_gradation(img, center, start_renge, end_range):
         dis_o_c = dis_o_p + dis_p_c
         # print(f"{[dis_p_c,start_renge]}")
         if dis_p_c <= start_renge:
-            color = 0
+            color = 255
         # elif dis_o_p > end_range:
             # color = 255
         elif dis_p_c > end_range:
-            color = 255
+            color = 0
         else :
-            color = int(dis_p_c / dis_o_c * 255)
+            color = 255 - int(dis_p_c / dis_o_c * 255)
         return color
     for ri, r in enumerate(ret):
         for ci, c in enumerate(r):
@@ -140,8 +138,11 @@ def line_gradation(img, line, nomal_pic, range):
     """
  
     (xn, yn) = nomal_pic
-   
-    ret = np.full((img.shape[0], img.shape[1]), 255, dtype=np.uint8)
+    if len(img.shape) == 3:
+        ret = np.full(img.shape, (255, 255, 255), dtype=np.uint8)
+    else :
+        ret = np.full((img.shape[0], img.shape[1]), 255, dtype=np.uint8)
+
     def func(x, y):
         return line_distance(line, (x, y))
  
@@ -155,17 +156,72 @@ def line_gradation(img, line, nomal_pic, range):
             if distance <= 0:
                 distance = 0
             ret[ri,ci] = distance
-            # if (nomal_flg and distance >= 0) :            
-            #     ret[ri,ci] = distance / range * 255
-            # elif (not nomal_flg and distance < 0):
-            #     ret[ri,ci] = -distance / range * 255
-            # else:
-            #    ret[ri,ci] = 0
     return ret
 
 def mask(src, mask):
-    ret = np.full((src.shape[0], src.shape[1]), 255, dtype=np.float64)
+    ret = np.full((src.shape[0], src.shape[1]), 255, dtype=np.uint8)
     for ri, r in enumerate(ret):
         for ci, c in enumerate(r):
             ret[ri,ci] = 255 - ((255 - src[ri,ci]) * (255 - mask[ri,ci]) / 255)
     return ret
+
+def mask_color(src, mask):
+    ret = np.full(src.shape, (255,255,255), dtype=np.float64)
+    white = 1
+    src  = src / 255
+    mask = mask /255
+    for ri, r in enumerate(ret):
+        for ci, c in enumerate(r):
+            ret[ri, ci] = white - ((white - src[ri,ci]) * (white - mask[ri,ci]))
+    return ret * 255
+
+def mask_color2(src, mask):
+    flg = src >= mask
+    flg2 = src < mask
+    tmp = np.copy(src)
+    src[flg] = mask[flg]
+    src[flg2] = tmp[flg2]
+    return src
+
+def blend_color(base, upper, mask):
+    ret = np.full(base.shape, (255,255,255), dtype=np.float64)
+    white = np.array([255.,255.,255.])
+    for ri, r in enumerate(ret):
+        for ci, c in enumerate(r):
+            ret[ri, ci] = white - ((white - upper[ri,ci]) * (255- mask[ri,ci]) / 255)
+
+def Multiply(bg_img, fg_img):
+    bg_img = bg_img / 255
+    fg_img = fg_img / 255
+    result = bg_img * fg_img
+    return result * 255
+
+def shift(img, nomal):
+    (x,y) = nomal
+    (w,h,d) = img.shape
+    ret = np.full(img.shape, (0,0,0), dtype=np.uint8)
+    if x < 0 and y >= 0:
+        ret[0:w+x, y:h] = img[-x:w, 0:h-y]
+    elif x >= 0 and y>= 0:
+        ret[x:w, y:h] = img[0:w-x, 0:h-y]
+    elif x < 0 and y < 0:
+        ret[0:w+x, 0:h+y] = img[-x:w, -y:h]
+    elif x >= 0 and y < 0:
+        ret[x:w, 0:h+y] = img[0:w-x, -y:h]
+    return ret
+
+def Screen(bg_img, fg_img):
+    result = np.zeros(bg_img.shape)
+    result = 1 - ((1 - bg_img) * (1 - fg_img))
+    return result
+
+def addition(a_img, b_img):
+    result = a_img / 255 + b_img / 255
+    return (result.clip(0,1) * 255).astype(np.uint8)
+
+def addition_mask(a_img, msk_img):
+    msk_flg = msk_img != (0,0,0)
+    a_img[msk_flg] = msk_img[msk_flg]
+    return a_img
+
+    

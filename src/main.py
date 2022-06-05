@@ -245,24 +245,118 @@ class ground_layer():
     def create_ground(self):
         (w,h,d)=self.shape
         # self.img = np.full((w,h), 255, dtype=np.uint8)
-        noise=np.random.normal(240,10,(w,h))
-        mask = blend.line_gradation(noise, (-1, 1, -100), (0,200), 100)
-        mask = mask.astype(np.float64)
-        noise2=np.random.normal(240,10,(w,h))
-        self.img = blend.mask(noise, mask)
-        self.img = blend.alfa_blend_mask(self.img, noise2, 0.5)
+        noise=np.clip(np.random.normal(240,10,(w,h)), 0, 255).astype(np.uint8)
+        base = np.full((w,h,3), (139, 200, 190), dtype=np.uint8)
+        self.img = blend.Multiply(base, cv2.cvtColor(noise, cv2.COLOR_GRAY2BGR))
+        
+        noise2=np.clip(np.random.normal(100,30,(w,h)), 0, 255).astype(np.uint8)
+        mask = blend.line_gradation(noise, (-1, 4, 100), (0, 200), 300)
+        noise2 = blend.mask(noise2, mask)
+        base2 = np.full((w,h,3), (35, 50, 58), dtype=np.uint8)
+        base2 = blend.mask_color(base2, noise2)
+
+        mask = blend.line_gradation(noise, (-1, 4, 200), (0, 200), 400)
+        base3 = np.full((w,h,3), (34, 51, 57), dtype=np.uint8)
+        base3 = blend.mask_color(base3, mask)
+
+
+        self.img = blend.Multiply(self.img, base2)
+        # self.img = blend.Multiply(self.img, base3)
+
+        # mask = blend.alfa_blend_mask(self.img, noise2, 0.5)
+
         # self.img = mask
         # self.img = cv2.blur(self.img,(5,5))
         # self.ground = blend.get_gradient_2d(1,100,w,h,True)
         # self.ground2 = blend.get_gradient_3d(w, h, (0, 0, 192), (255, 255, 255), (True, False, True))
 
+class enclosure():
+    def __init__(self, img):
+        self.shape = img.shape
+        self.create(img)
 
+    def create(self, src):
+        PADDING = 3
+        CIRVE = 10
+        ENCLOSURE_COLOR = (91, 93, 94)
+        p_c = PADDING + CIRVE
+        (w,h,d) = self.shape
+        base = np.full(self.shape, ENCLOSURE_COLOR, dtype=np.uint8)
+        base = cv2.rectangle(base, (p_c, p_c), (w-p_c,w-p_c), (0, 0, 0), thickness=CIRVE)
+        base = cv2.rectangle(base, (p_c, p_c), (w-p_c,w-p_c), (0, 0, 0), thickness=-1)
+        
+        light_base = self.create_light(base,ENCLOSURE_COLOR)
+        light_circle = self.create_light_circle()
+        light_base = blend.mask_color2(cv2.cvtColor(light_circle,cv2.COLOR_GRAY2BGR), light_base  )
+        self.light = self.light(base, (255,255,255), light_base)
+        self.img = blend.addition(base, self.light)
+
+    def create_light(self, enclosre_img, color):
+        black_img = np.full(self.shape, (0,0,0), dtype=np.uint8)
+        glay_img = np.full(self.shape, color, dtype=np.uint8)
+        white_img = np.full(self.shape, (255,255,255), dtype=np.uint8)
+        msk_flg = enclosre_img == (0,0,0)
+        non_mask_flg = enclosre_img != (0,0,0)
+        light_tmp = np.full(self.shape, (91, 93, 94), dtype=np.uint8)
+        light_tmp[msk_flg] = glay_img[msk_flg]
+        light_tmp[non_mask_flg] = black_img[non_mask_flg]
+
+        ret = np.full(self.shape, (0,0,0), dtype=np.uint8)
+
+        fil = blend.shift(light_tmp, (1,-1))
+        tmp = np.clip(enclosre_img + fil, a_min=0, a_max=255)
+        flg = tmp > color
+        ret[flg] = white_img[flg]
+        return ret
+        
+    def create_light_circle(self):
+        base = np.full(self.shape, (0,0,0), dtype=np.uint8)
+        base = blend.circle_gradation(base, (190,10), 0, 100)
+        return base
+
+    def light(self,img, light_color, light_mask):
+        light_base = np.full(self.shape, light_color, dtype=np.uint8)
+        light_base = blend.mask_color2(light_base, light_mask)
+        return light_base
+
+class glass():
+    def __init__(self, enclosure):
+        self.enclosure = enclosure
+        self.create()
+    
+    def create(self):
+        self.shape = self.enclosure.shape
+        self.enclosure_light = blend.shift(self.enclosure.light, (0, 3))
+        self.img = self.enclosure_light
+        
+        glass_img = np.full(self.shape, 0, dtype=np.uint8)
+        print(self.shape)
+        # rec_points = np.array([(200,30),(290, 70), (290, 230), (160, 160)])
+        rec_points = np.array([(150,10),(290, 70), (290, 230), (10, 30)])
+        cv2.fillPoly(glass_img, [rec_points], (255, 255, 255))
+        rec_points = np.array([(220,10),(230, 10), (130, 230), (120, 230)])
+        cv2.fillPoly(glass_img, [rec_points], (0, 0, 0))
+        rec_points = np.array([(30,10),(35, 10), (300, 150), (300, 155)])
+        cv2.fillPoly(glass_img, [rec_points], (0, 0, 0))
+        tmp = blend.line_gradation(glass_img,(100,1,-200), (0,300), 400)
+        glass_img = blend.Multiply(glass_img, tmp)
+        self.img = glass_img
 
 
 
 class gameboy():
     def __init__(self):
-        self.dots_layer
+        # self.dots_layer = dots_layer("../srcData/testpic.jpg")
+        self.ground = ground_layer((300,300,3))
+        self.en = enclosure(self.ground.img)
+        self.gls = glass(self.en)
+        self.blend()
+
+    def blend(self):
+        tmp = blend.addition(self.ground.img, self.gls.img * 0.2)
+        self.img = blend.addition_mask(tmp,self.en.img)
+
+
 
 
 def create_dots_pic(path):
@@ -290,8 +384,8 @@ def main8(opt):
     cv2.destroyAllWindows()
 
 def main9(opt):
-    ground_ly = ground_layer((300,300,3))
-    cv2.imwrite("../srcData/noise.jpg", ground_ly.img)
+    gb = gameboy()
+    cv2.imwrite("../srcData/noise.jpg", gb.img)
     # cv2.imshow("ccolor",ground_ly.img)
     # cv2.waitKey(0)
 
